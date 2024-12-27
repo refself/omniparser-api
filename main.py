@@ -58,6 +58,7 @@ app = FastAPI(title="OmniParser API", description=MARKDOWN)
 class ProcessResponse(BaseModel):
     image: str  # Base64 encoded image
     parsed_content_list: str
+    coordinates_list: list  # Add this new field for coordinates
 
 def process(
     image_input: Image.Image,
@@ -66,7 +67,7 @@ def process(
     use_paddleocr: bool,
     imgsz: int,
     icon_process_batch_size: int,
-) -> tuple[Image.Image, str]:
+) -> tuple[Image.Image, str, list]:  # Updated return type
     image_save_path = 'imgs/saved_image_demo.png'
     os.makedirs('imgs', exist_ok=True)
     
@@ -107,16 +108,32 @@ def process(
     image = Image.open(io.BytesIO(base64.b64decode(dino_labled_img)))
     print('finish processing')
     
+    # Get image dimensions for coordinate calculation
+    img_width, img_height = image.size
+    
+    # Create coordinates list
+    coordinates_list = []
+    for item, coords in zip(parsed_content_list, label_coordinates):
+        x1, y1, x2, y2 = coords
+        center_x = int((x1 + x2) * img_width / 2)
+        center_y = int((y1 + y2) * img_height / 2)
+        coordinates_list.append({
+            "type": item["type"],
+            "content": item["content"],
+            "coordinates": (center_x, center_y)
+        })
+    
+    # Format parsed content list as before
     parsed_content_list = '\n'.join([
-        f'type: {x["type"]}, content: {x["content"]}, interactivity: {x["interactivity"]}'
-        for x in parsed_content_list
+        f'type: {x["type"]}, content: {x["content"]}, interactivity: {x["interactivity"]}, coordinates: {coordinates_list[i]["coordinates"]}'
+        for i, x in enumerate(parsed_content_list)
     ])
     
     # Cleanup
     if os.path.exists(image_save_path):
         os.remove(image_save_path)
         
-    return image, parsed_content_list
+    return image, parsed_content_list, coordinates_list
 
 @app.post("/process_image", response_model=ProcessResponse)
 async def process_image(
@@ -145,7 +162,7 @@ async def process_image(
         raise HTTPException(status_code=400, detail=f"Invalid image file: {str(e)}")
 
     try:
-        processed_image, parsed_content = process(
+        processed_image, parsed_content, coordinates_list = process(
             image_input,
             box_threshold,
             iou_threshold,
@@ -161,7 +178,8 @@ async def process_image(
         
         return ProcessResponse(
             image=img_str,
-            parsed_content_list=parsed_content
+            parsed_content_list=parsed_content,
+            coordinates_list=coordinates_list
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
@@ -184,4 +202,4 @@ if __name__ == "__main__":
     print(f"Starting server with models:")
     print(f"- Icon Detection: {args.icon_detect_model}")
     print(f"- Caption Model: {args.icon_caption_model}")
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    uvicorn.run(app, host="0.0.0.0", port=1337)
