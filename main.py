@@ -184,4 +184,4 @@ if __name__ == "__main__":
     print(f"Starting server with models:")
     print(f"- Icon Detection: {args.icon_detect_model}")
     print(f"- Caption Model: {args.icon_caption_model}")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8888)
